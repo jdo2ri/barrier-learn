@@ -5,23 +5,28 @@ import time
 
 st.set_page_config(page_title="Barrier Learn", layout="wide")
 
+# ✨ 핵심: 모든 사용자(PC, 스마트폰)가 실시간으로 공유하는 "클라우드 공용 DB"
+@st.cache_resource
+def get_database():
+    return {
+        "saved_lectures": {},
+        "comments": {}
+    }
+
+db = get_database()
+
 # ---------------------------------------------------------
-# 데이터 저장소 초기화
+# 개인용(현재 화면) 상태 초기화
 # ---------------------------------------------------------
 if 'page' not in st.session_state:
     st.session_state.page = 'main'
-if 'saved_lectures' not in st.session_state:
-    st.session_state.saved_lectures = {}
 if 'start_time' not in st.session_state:
     st.session_state.start_time = 0
-if 'comments' not in st.session_state:
-    st.session_state.comments = {} 
 if 'quiz_count' not in st.session_state:
     st.session_state.quiz_count = 1
 if 'manual_sub_count' not in st.session_state:
     st.session_state.manual_sub_count = 0
 
-# 폼 데이터 바인딩을 위한 상태 초기화
 if 'lecture_title_val' not in st.session_state:
     st.session_state.lecture_title_val = ""
 if 'url_input_val' not in st.session_state:
@@ -66,8 +71,8 @@ def render_comments(lecture_title, role):
     st.write("---")
     st.subheader("실시간 질문 및 소통 댓글창")
     
-    if lecture_title not in st.session_state.comments:
-        st.session_state.comments[lecture_title] = []
+    if lecture_title not in db["comments"]:
+        db["comments"][lecture_title] = []
         
     with st.container(border=True):
         st.markdown("**새 댓글 작성**")
@@ -79,7 +84,7 @@ def render_comments(lecture_title, role):
         with col_btn:
             if st.button("등록", key=f"btn_new_{role}", use_container_width=True):
                 if c_author and c_text:
-                    st.session_state.comments[lecture_title].append({
+                    db["comments"][lecture_title].append({
                         "id": str(time.time()),
                         "role": role,
                         "author": c_author,
@@ -89,10 +94,10 @@ def render_comments(lecture_title, role):
                     st.rerun()
 
     st.markdown("**댓글 목록**")
-    if not st.session_state.comments[lecture_title]:
+    if not db["comments"][lecture_title]:
         st.info("아직 작성된 댓글이 없습니다.")
         
-    for c in st.session_state.comments[lecture_title]:
+    for c in db["comments"][lecture_title]:
         with st.container(border=True):
             header_text = f"교사 ({c['author']})" if c['role'] == '교사' else f"학생 ({c['author']})"
             col_msg, col_del = st.columns([9, 1])
@@ -101,7 +106,7 @@ def render_comments(lecture_title, role):
             with col_del:
                 if role == '교사':
                     if st.button("삭제", key=f"del_{c['id']}", use_container_width=True):
-                        st.session_state.comments[lecture_title].remove(c)
+                        db["comments"][lecture_title].remove(c)
                         st.rerun()
             
             if c['replies']:
@@ -164,20 +169,18 @@ elif st.session_state.page == 'teacher':
     st.subheader("[교사용] 강의 영상 업로드 및 교육 자료 생성")
     st.write("---")
 
-    # ✨ 작업 선택: 새로운 강의 등록 / 기존 강의 수정
     action = st.radio("작업 선택", ["새로운 강의 등록", "기존 강의 수정"], horizontal=True)
     
     selected_lecture_to_edit = None
     if action == "기존 강의 수정":
-        if not st.session_state.saved_lectures:
+        if not db["saved_lectures"]:
             st.warning("수정할 수 있는 기존 강의가 없습니다. 새로운 강의를 먼저 등록해주세요.")
         else:
-            existing_lectures = list(st.session_state.saved_lectures.keys())
+            existing_lectures = list(db["saved_lectures"].keys())
             selected_lecture_to_edit = st.selectbox("수정할 강의 선택", existing_lectures)
             
-            # ✨ 기존 강의 데이터 불러오기
             if selected_lecture_to_edit:
-                lecture_data = st.session_state.saved_lectures[selected_lecture_to_edit]
+                lecture_data = db["saved_lectures"][selected_lecture_to_edit]
                 if st.session_state.get('loaded_lecture_name') != selected_lecture_to_edit:
                     st.session_state.loaded_lecture_name = selected_lecture_to_edit
                     st.session_state.lecture_title_val = selected_lecture_to_edit
@@ -194,7 +197,6 @@ elif st.session_state.page == 'teacher':
                         st.session_state[f"q_ans_{i}"] = q['정답(O/X)']
                         st.session_state[f"q_exp_{i}"] = q['해설']
     else:
-        # 새로운 강의 등록일 경우 수정 전용 임시 데이터 지우기
         if st.session_state.get('loaded_lecture_name') is not None:
             st.session_state.loaded_lecture_name = None
             st.session_state.lecture_title_val = ""
@@ -230,7 +232,6 @@ elif st.session_state.page == 'teacher':
             with edit_col:
                 st.markdown("**자막 검수** (수정한 자막만 학생에게 제공됨)")
                 
-                # 자막 변경 감지 및 자동 가져오기
                 if 'current_subs' not in st.session_state or st.session_state.get('current_vid') != video_id:
                     with st.spinner('자막을 불러오는 중입니다...'):
                         result = fetch_real_subtitles(video_id)
@@ -251,7 +252,6 @@ elif st.session_state.page == 'teacher':
                 
                 edited_subtitles = []
                 
-                # 1. 불러온 기존 자막 및 수정 내역 렌더링
                 if st.session_state.current_subs:
                     with st.container(height=250):
                         for idx, sub in enumerate(st.session_state.current_subs):
@@ -275,7 +275,6 @@ elif st.session_state.page == 'teacher':
                                     "is_edited": is_edited
                                 })
                 
-                # 2. 직접 자막 추가하기
                 st.markdown("<br>**직접 자막 추가**", unsafe_allow_html=True)
                 for i in range(st.session_state.manual_sub_count):
                     col_t, col_txt = st.columns([2, 5])
@@ -326,21 +325,20 @@ elif st.session_state.page == 'teacher':
                         if q_val.strip(): 
                             quiz_list.append({"질문": q_val, "정답(O/X)": a_val, "해설": e_val})
                     
-                    # 기존 강의 수정 시, 제목이 바뀌면 예전 데이터 삭제 처리
                     if action == "기존 강의 수정" and selected_lecture_to_edit and selected_lecture_to_edit != lecture_title:
-                        del st.session_state.saved_lectures[selected_lecture_to_edit]
+                        del db["saved_lectures"][selected_lecture_to_edit]
                         
-                    st.session_state.saved_lectures[lecture_title] = {
+                    db["saved_lectures"][lecture_title] = {
                         "url": url_input,
                         "subtitles": edited_subtitles,
                         "explanation_text": explanation_text,
                         "quiz": quiz_list
                     }
-                    st.success("학생용 화면에 업로드되었습니다.")
+                    st.success("학생용 화면에 업로드/수정되었습니다.")
 
-    if st.session_state.saved_lectures:
+    if db["saved_lectures"]:
         st.write("---")
-        comment_lecture = st.selectbox("댓글을 확인할 강의를 선택하세요", ["(선택)"] + list(st.session_state.saved_lectures.keys()))
+        comment_lecture = st.selectbox("댓글을 확인할 강의를 선택하세요", ["(선택)"] + list(db["saved_lectures"].keys()))
         if comment_lecture != "(선택)":
             render_comments(comment_lecture, role="교사")
 
@@ -356,12 +354,12 @@ elif st.session_state.page == 'student':
     st.subheader("[학생용] 학습 강의실")
     st.write("---")
     
-    lecture_list = ["(선택)"] + list(st.session_state.saved_lectures.keys())
+    lecture_list = ["(선택)"] + list(db["saved_lectures"].keys())
     lecture = st.selectbox("학습할 강의를 선택해주세요", lecture_list)
     
     if lecture != "(선택)":
         st.write("---")
-        lecture_data = st.session_state.saved_lectures[lecture]
+        lecture_data = db["saved_lectures"][lecture]
         
         video_col, text_col = st.columns([1, 1])
         
