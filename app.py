@@ -18,6 +18,9 @@ if 'comments' not in st.session_state:
     st.session_state.comments = {} 
 if 'quiz_count' not in st.session_state:
     st.session_state.quiz_count = 1
+# ✨ 비상용 수동 자막 개수
+if 'manual_sub_count' not in st.session_state:
+    st.session_state.manual_sub_count = 0
 
 def get_video_id(url):
     try:
@@ -182,12 +185,14 @@ elif st.session_state.page == 'teacher':
                             st.session_state.current_subs = result
                             st.session_state.current_vid = video_id
                         else:
-                            st.error(f"자막을 불러올 수 없습니다. ({result})")
+                            st.warning("유튜브 보안 차단으로 자막을 자동으로 불러올 수 없습니다. 아래에서 직접 시연용 자막을 추가하세요.")
                             st.session_state.current_subs = []
                 
                 edited_subtitles = []
+                
+                # 1. 자동으로 불러온 자막이 있다면 표시
                 if st.session_state.current_subs:
-                    with st.container(height=300):
+                    with st.container(height=250):
                         for idx, sub in enumerate(st.session_state.current_subs):
                             col_btn, col_text = st.columns([2, 5])
                             with col_btn:
@@ -202,6 +207,31 @@ elif st.session_state.page == 'teacher':
                                     "edited_text": new_text, "is_edited": is_edited
                                 })
                 
+                # ✨ 2. 비상용 수동 자막 추가 기능 (IP 차단 완벽 대비)
+                st.markdown("<br>**직접 자막 추가 (시연용)**", unsafe_allow_html=True)
+                for i in range(st.session_state.manual_sub_count):
+                    col_t, col_txt = st.columns([2, 5])
+                    with col_t:
+                        m_time = st.text_input("시간", value="00:00", placeholder="01:20", key=f"m_time_{i}", label_visibility="collapsed")
+                    with col_txt:
+                        m_text = st.text_input("자막 내용", placeholder="자막 내용 입력", key=f"m_text_{i}", label_visibility="collapsed")
+                    
+                    if m_text.strip():
+                        try:
+                            m, s = map(int, m_time.split(":"))
+                            sec = m * 60 + s
+                        except:
+                            sec = 0
+                        # 수동으로 추가한 건 무조건 학생에게 보이도록 is_edited=True 처리
+                        edited_subtitles.append({
+                            "time": m_time, "seconds": sec, 
+                            "edited_text": m_text, "is_edited": True 
+                        })
+                
+                if st.button("➕ 직접 자막 추가하기", use_container_width=True):
+                    st.session_state.manual_sub_count += 1
+                    st.rerun()
+                
                 st.markdown("<br>**확인 퀴즈 (O/X) 출제**", unsafe_allow_html=True)
                 
                 with st.container(height=300):
@@ -212,7 +242,7 @@ elif st.session_state.page == 'teacher':
                         st.text_area(f"해설 {i+1}", key=f"q_exp_{i}", placeholder="해설을 입력하세요", height=68, label_visibility="collapsed")
                         st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
                 
-                if st.button("문제 추가하기", use_container_width=True):
+                if st.button("➕ 문제 추가하기", use_container_width=True):
                     st.session_state.quiz_count += 1
                     st.rerun()
                 
