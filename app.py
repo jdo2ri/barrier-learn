@@ -18,9 +18,16 @@ if 'comments' not in st.session_state:
     st.session_state.comments = {} 
 if 'quiz_count' not in st.session_state:
     st.session_state.quiz_count = 1
-# ✨ 비상용 수동 자막 개수
 if 'manual_sub_count' not in st.session_state:
     st.session_state.manual_sub_count = 0
+
+# 폼 데이터 바인딩을 위한 상태 초기화
+if 'lecture_title_val' not in st.session_state:
+    st.session_state.lecture_title_val = ""
+if 'url_input_val' not in st.session_state:
+    st.session_state.url_input_val = ""
+if 'explanation_text_val' not in st.session_state:
+    st.session_state.explanation_text_val = ""
 
 def get_video_id(url):
     try:
@@ -131,8 +138,8 @@ def render_comments(lecture_title, role):
 # ---------------------------------------------------------
 if st.session_state.page == 'main':
     st.markdown("<br><br><br>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center;'>Barrier Learn</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>다문화 가정을 위한 배리어프리 교육 플랫폼</p>", unsafe_allow_html=True)
+    st.title("Barrier Learn")
+    st.write("다문화 가정을 위한 배리어프리 교육 플랫폼")
     st.markdown("<br><br>", unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns([1, 2, 2, 1])
@@ -156,9 +163,54 @@ elif st.session_state.page == 'teacher':
         
     st.subheader("[교사용] 강의 영상 업로드 및 교육 자료 생성")
     st.write("---")
+
+    # ✨ 작업 선택: 새로운 강의 등록 / 기존 강의 수정
+    action = st.radio("작업 선택", ["새로운 강의 등록", "기존 강의 수정"], horizontal=True)
     
-    lecture_title = st.text_input("강의 제목", placeholder="예: 중학교 3학년 국어 - 시적 화자")
-    url_input = st.text_input("유튜브 링크", placeholder="링크를 첨부해주세요")
+    selected_lecture_to_edit = None
+    if action == "기존 강의 수정":
+        if not st.session_state.saved_lectures:
+            st.warning("수정할 수 있는 기존 강의가 없습니다. 새로운 강의를 먼저 등록해주세요.")
+        else:
+            existing_lectures = list(st.session_state.saved_lectures.keys())
+            selected_lecture_to_edit = st.selectbox("수정할 강의 선택", existing_lectures)
+            
+            # ✨ 기존 강의 데이터 불러오기
+            if selected_lecture_to_edit:
+                lecture_data = st.session_state.saved_lectures[selected_lecture_to_edit]
+                if st.session_state.get('loaded_lecture_name') != selected_lecture_to_edit:
+                    st.session_state.loaded_lecture_name = selected_lecture_to_edit
+                    st.session_state.lecture_title_val = selected_lecture_to_edit
+                    st.session_state.url_input_val = lecture_data['url']
+                    st.session_state.explanation_text_val = lecture_data.get('explanation_text', '')
+                    st.session_state.current_subs = lecture_data['subtitles']
+                    st.session_state.current_vid = get_video_id(lecture_data['url'])
+                    st.session_state.manual_sub_count = 0
+                    
+                    saved_quizzes = lecture_data.get('quiz', [])
+                    st.session_state.quiz_count = len(saved_quizzes) if saved_quizzes else 1
+                    for i, q in enumerate(saved_quizzes):
+                        st.session_state[f"q_text_{i}"] = q['질문']
+                        st.session_state[f"q_ans_{i}"] = q['정답(O/X)']
+                        st.session_state[f"q_exp_{i}"] = q['해설']
+    else:
+        # 새로운 강의 등록일 경우 수정 전용 임시 데이터 지우기
+        if st.session_state.get('loaded_lecture_name') is not None:
+            st.session_state.loaded_lecture_name = None
+            st.session_state.lecture_title_val = ""
+            st.session_state.url_input_val = ""
+            st.session_state.explanation_text_val = ""
+            st.session_state.current_subs = []
+            st.session_state.current_vid = None
+            st.session_state.quiz_count = 1
+            st.session_state.manual_sub_count = 0
+            for k in list(st.session_state.keys()):
+                if k.startswith("q_text_") or k.startswith("q_ans_") or k.startswith("q_exp_"):
+                    del st.session_state[k]
+
+    st.write("")
+    lecture_title = st.text_input("강의 제목", key="lecture_title_val", placeholder="예: 중학교 3학년 국어 - 시적 화자")
+    url_input = st.text_input("유튜브 링크", key="url_input_val", placeholder="링크를 첨부해주세요")
     
     if url_input and lecture_title:
         video_id = get_video_id(url_input)
@@ -173,24 +225,33 @@ elif st.session_state.page == 'teacher':
                 st.video(url_input, start_time=st.session_state.start_time)
                 
                 st.markdown("<br>**이해를 돕기 위한 언어 정리**", unsafe_allow_html=True)
-                explanation_text = st.text_area("개념 설명이나 어려운 단어 뜻을 입력해주세요.", placeholder="예: 시적 화자란 시에서 말하는 사람을 뜻합니다.", height=100, label_visibility="collapsed")
+                explanation_text = st.text_area("개념 설명이나 어려운 단어 뜻을 입력해주세요.", key="explanation_text_val", placeholder="예: 시적 화자란 시에서 말하는 사람을 뜻합니다.", height=100, label_visibility="collapsed")
                 
             with edit_col:
                 st.markdown("**자막 검수** (수정한 자막만 학생에게 제공됨)")
                 
+                # 자막 변경 감지 및 자동 가져오기
                 if 'current_subs' not in st.session_state or st.session_state.get('current_vid') != video_id:
                     with st.spinner('자막을 불러오는 중입니다...'):
                         result = fetch_real_subtitles(video_id)
                         if isinstance(result, list):
-                            st.session_state.current_subs = result
+                            st.session_state.current_subs = []
+                            for sub in result:
+                                st.session_state.current_subs.append({
+                                    "time": sub['time'],
+                                    "seconds": sub['seconds'],
+                                    "original_text": sub['text'],
+                                    "edited_text": sub['text'],
+                                    "is_edited": False
+                                })
                             st.session_state.current_vid = video_id
                         else:
-                            st.warning("유튜브 보안 차단으로 자막을 자동으로 불러올 수 없습니다. 아래에서 직접 시연용 자막을 추가하세요.")
+                            st.warning("유튜브 보안 차단으로 자막을 자동으로 불러올 수 없습니다. 아래에서 직접 자막을 추가하세요.")
                             st.session_state.current_subs = []
                 
                 edited_subtitles = []
                 
-                # 1. 자동으로 불러온 자막이 있다면 표시
+                # 1. 불러온 기존 자막 및 수정 내역 렌더링
                 if st.session_state.current_subs:
                     with st.container(height=250):
                         for idx, sub in enumerate(st.session_state.current_subs):
@@ -200,15 +261,22 @@ elif st.session_state.page == 'teacher':
                                     st.session_state.start_time = sub['seconds']
                                     st.rerun()
                             with col_text:
-                                new_text = st.text_input("수정", value=sub['text'], label_visibility="collapsed", key=f"edit_{idx}")
-                                is_edited = (new_text.strip() != sub['text'].strip())
+                                display_val = sub.get('edited_text', sub.get('text', ''))
+                                new_text = st.text_input("수정", value=display_val, label_visibility="collapsed", key=f"edit_{idx}")
+                                
+                                orig_val = sub.get('original_text', sub.get('text', ''))
+                                is_edited = (new_text.strip() != orig_val.strip())
+                                
                                 edited_subtitles.append({
-                                    "time": sub['time'], "seconds": sub['seconds'], 
-                                    "edited_text": new_text, "is_edited": is_edited
+                                    "time": sub['time'], 
+                                    "seconds": sub['seconds'], 
+                                    "original_text": orig_val,
+                                    "edited_text": new_text, 
+                                    "is_edited": is_edited
                                 })
                 
-                # ✨ 2. 비상용 수동 자막 추가 기능 (IP 차단 완벽 대비)
-                st.markdown("<br>**직접 자막 추가 (시연용)**", unsafe_allow_html=True)
+                # 2. 직접 자막 추가하기
+                st.markdown("<br>**직접 자막 추가**", unsafe_allow_html=True)
                 for i in range(st.session_state.manual_sub_count):
                     col_t, col_txt = st.columns([2, 5])
                     with col_t:
@@ -222,13 +290,15 @@ elif st.session_state.page == 'teacher':
                             sec = m * 60 + s
                         except:
                             sec = 0
-                        # 수동으로 추가한 건 무조건 학생에게 보이도록 is_edited=True 처리
                         edited_subtitles.append({
-                            "time": m_time, "seconds": sec, 
-                            "edited_text": m_text, "is_edited": True 
+                            "time": m_time, 
+                            "seconds": sec, 
+                            "original_text": "",
+                            "edited_text": m_text, 
+                            "is_edited": True 
                         })
                 
-                if st.button("➕ 직접 자막 추가하기", use_container_width=True):
+                if st.button("직접 자막 추가하기", use_container_width=True):
                     st.session_state.manual_sub_count += 1
                     st.rerun()
                 
@@ -242,7 +312,7 @@ elif st.session_state.page == 'teacher':
                         st.text_area(f"해설 {i+1}", key=f"q_exp_{i}", placeholder="해설을 입력하세요", height=68, label_visibility="collapsed")
                         st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
                 
-                if st.button("➕ 문제 추가하기", use_container_width=True):
+                if st.button("문제 추가하기", use_container_width=True):
                     st.session_state.quiz_count += 1
                     st.rerun()
                 
@@ -256,6 +326,10 @@ elif st.session_state.page == 'teacher':
                         if q_val.strip(): 
                             quiz_list.append({"질문": q_val, "정답(O/X)": a_val, "해설": e_val})
                     
+                    # 기존 강의 수정 시, 제목이 바뀌면 예전 데이터 삭제 처리
+                    if action == "기존 강의 수정" and selected_lecture_to_edit and selected_lecture_to_edit != lecture_title:
+                        del st.session_state.saved_lectures[selected_lecture_to_edit]
+                        
                     st.session_state.saved_lectures[lecture_title] = {
                         "url": url_input,
                         "subtitles": edited_subtitles,
