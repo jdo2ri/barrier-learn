@@ -144,7 +144,7 @@ def render_comments(lecture_title, role):
 if st.session_state.page == 'main':
     st.markdown("<br><br><br>", unsafe_allow_html=True)
     st.title("Barrier Learn")
-    st.write("다문화 가정을 위한 배리어프리 교육 플랫폼")
+    st.write("배리어프리 교육 플랫폼")
     st.markdown("<br><br>", unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns([1, 2, 2, 1])
